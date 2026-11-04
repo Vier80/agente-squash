@@ -1,9 +1,8 @@
-"""Diagnosi UWW - versione 4.
+"""Diagnosi Fencing Time Live (stesso nome file del programma di esplorazione precedente).
 
-Dal test precedente risulta che la pagina scarica i risultati di ogni categoria con
-una richiesta dati (text/x-component). Questo programma intercetta quella risposta,
-la legge come dati strutturati e stampa nel log: la struttura (ridotta), un esempio di
-incontro, e dove compaiono eventuali date. Non scrive nulla da nessuna parte.
+Apre la pagina indicata, registra le richieste dati che fa il sito, stampa la struttura
+della pagina (titoli, tabelle, link, esempi di righe) e prova a leggere la pagina anche
+senza browser. Non scrive nulla da nessuna parte.
 """
 import json
 import os
@@ -17,28 +16,18 @@ URL = os.getenv("PAGE_URL", "").strip()
 if not URL:
     sys.exit("Manca l'indirizzo della pagina (PAGE_URL).")
 
-catture = []
-
-
-def on_response(resp):
-    try:
-        req = resp.request
-        if req.method != "POST" or not req.headers.get("next-action"):
-            return
-        catture.append({"url": resp.url, "invio": req.post_data or "", "corpo": resp.text()})
-    except Exception:
-        pass
+UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Safari/537.36"
+risposte = []
 
 
 def riduci(v, livello=0):
-    """Versione compatta di una struttura: liste a 2 elementi, testi corti."""
-    if livello > 7:
+    if livello > 6:
         return "..."
     if isinstance(v, dict):
         voci = list(v.items())
-        out = {k: riduci(x, livello + 1) for k, x in voci[:25]}
-        if len(voci) > 25:
-            out["..."] = f"(+{len(voci) - 25} chiavi)"
+        out = {k: riduci(x, livello + 1) for k, x in voci[:30]}
+        if len(voci) > 30:
+            out["..."] = f"(+{len(voci) - 30} chiavi)"
         return out
     if isinstance(v, list):
         out = [riduci(x, livello + 1) for x in v[:2]]
@@ -46,94 +35,116 @@ def riduci(v, livello=0):
             out.append(f"... (totale {len(v)} elementi)")
         return out
     if isinstance(v, str):
-        return v if len(v) <= 70 else v[:70] + "…"
+        return v if len(v) <= 80 else v[:80] + "…"
     return v
 
 
-def cammina(nodo, percorso, visita):
-    visita(nodo, percorso)
-    if isinstance(nodo, dict):
-        for k, v in nodo.items():
-            cammina(v, percorso + [str(k)], visita)
-    elif isinstance(nodo, list):
-        for i, v in enumerate(nodo):
-            cammina(v, percorso + [str(i)], visita)
-
-
-def analizza(c, needle):
-    corpo = c["corpo"]
-    print(f"Indirizzo: {c['url'][:150]}")
-    print(f"Dati inviati: {c['invio'][:200]}")
-    print(f"Dimensione risposta: {len(corpo)} caratteri")
-    alberi = []
-    for riga in corpo.split("\n"):
-        m = re.match(r"^([0-9a-zA-Z]+):(.*)$", riga, re.S)
-        if not m:
-            continue
-        idr, payload = m.groups()
+def mostra_corpo(testo, ctype):
+    testo = testo or ""
+    s = testo.strip()
+    if s[:1] in "{[":
         try:
-            obj = json.loads(payload)
+            print("    JSON ridotto:", json.dumps(riduci(json.loads(s)), ensure_ascii=False)[:2500])
+            return
         except Exception:
-            print(f"  riga {idr}: non JSON ({len(payload)} caratteri), inizio={payload[:80]!r}")
-            continue
-        alberi.append((idr, obj))
-        print(f"  riga {idr}: JSON {type(obj).__name__}, {len(payload)} caratteri")
-
-    print("\n--- Struttura ridotta (prime 3500 lettere per riga) ---")
-    for idr, obj in alberi:
-        print(f"[riga {idr}] " + json.dumps(riduci(obj), ensure_ascii=False)[:3500])
-
-    candidati, date = [], []
-
-    def visita(n, p):
-        if isinstance(n, dict):
-            s = json.dumps(n, ensure_ascii=False)
-            if needle in s.upper() and len(s) <= 4000:
-                candidati.append((len(s), p, n))
-        elif isinstance(n, str) and re.search(r"\b20\d\d-\d\d-\d\d", n) and len(date) < 6:
-            date.append(("/".join(p), n[:40]))
-
-    for idr, obj in alberi:
-        cammina(obj, [f"riga{idr}"], visita)
-
-    print(f"\n--- Dove compare '{needle}' ---")
-    if candidati:
-        grande = max(candidati, key=lambda x: x[0])
-        piccoli = [x for x in candidati if len(x[2]) >= 3]
-        piccolo = min(piccoli, key=lambda x: x[0]) if piccoli else None
-        print("Struttura piu' ampia (probabile incontro):", "/".join(grande[1]))
-        print(json.dumps(riduci(grande[2]), ensure_ascii=False)[:2500])
-        if piccolo and piccolo is not grande:
-            print("\nStruttura piu' piccola (probabile atleta):", "/".join(piccolo[1]))
-            print(json.dumps(riduci(piccolo[2]), ensure_ascii=False)[:1200])
-    else:
-        print("Non trovato nei dati strutturati.")
-
-    print("\n--- Valori che sembrano date ---")
-    if date:
-        for percorso, valore in date:
-            print(f"{percorso} = {valore}")
-    else:
-        print("Nessuna data trovata nei dati.")
+            pass
+    print("    inizio:", re.sub(r"\s+", " ", s[:700]))
 
 
-with sync_playwright() as p:
-    browser = p.chromium.launch()
-    page = browser.new_page(viewport={"width": 1400, "height": 2000})
-    page.on("response", on_response)
+def on_response(resp):
     try:
+        req = resp.request
+        ct = resp.headers.get("content-type", "")
+        if req.resource_type in ("image", "font", "stylesheet", "media"):
+            return
+        corpo = ""
+        try:
+            corpo = resp.text()
+        except Exception:
+            pass
+        risposte.append((req.method, resp.status, req.resource_type, ct, resp.url, corpo, req.post_data or ""))
+    except Exception:
+        pass
+
+
+def prova_senza_browser(ctx, url, etichetta):
+    try:
+        r = ctx.get(url, headers={"User-Agent": UA}, timeout=30000)
+        corpo = r.text()
+        print(f"[{etichetta}] {url[:140]}")
+        print(f"    stato {r.status}, tipo {r.headers.get('content-type', '?')}, {len(corpo)} caratteri, "
+              f"<tr>: {corpo.count('<tr')}, <table>: {corpo.count('<table')}")
+        mostra_corpo(corpo, r.headers.get("content-type", ""))
+    except Exception as e:
+        print(f"[{etichetta}] errore: {e}")
+
+
+def main():
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        ctx = browser.new_context(user_agent=UA, viewport={"width": 1400, "height": 2000})
+        print("=== A. Lettura semplice, senza browser ===")
+        prova_senza_browser(ctx.request, URL, "pagina")
+        prova_senza_browser(ctx.request, URL.rstrip("/") + "/data", "pagina + /data")
+
+        print("\n=== B. Pagina aperta nel browser ===")
+        page = ctx.new_page()
+        page.on("response", on_response)
         page.goto(URL, wait_until="domcontentloaded", timeout=60000)
         page.wait_for_timeout(12000)
-        print(f"=== A. Dati ricevuti all'apertura della pagina (57 kg) === richieste registrate: {len(catture)}")
-        if catture:
-            analizza(catture[0], "DINGASHVILI")
-        prima = len(catture)
-        page.locator("button[data-slot='button']").filter(
-            has_text=re.compile(r"^\s*61\s*kg\s*$")).first.click(timeout=10000)
-        page.wait_for_timeout(10000)
-        print(f"\n\n=== B. Dati ricevuti dopo il clic su 61 kg === nuove richieste: {len(catture) - prima}")
-        if len(catture) > prima:
-            analizza(catture[-1], "AITAKYN")
-    except Exception:
-        traceback.print_exc(limit=3, file=sys.stdout)
-    browser.close()
+        print("Titolo:", page.title())
+        for tag in ("h1", "h2", "h3"):
+            testi = [t.strip() for t in page.locator(tag).all_inner_texts() if t.strip()]
+            print(f"{tag}:", testi[:8])
+
+        print("\n--- Testo visibile (primi 3000 caratteri) ---")
+        print(re.sub(r"[ \t]+", " ", page.inner_text("body"))[:3000])
+
+        print("\n--- Tabelle ---")
+        n_tab = page.locator("table").count()
+        print("tabelle:", n_tab, "| righe <tr>:", page.locator("tr").count())
+        for i in range(min(n_tab, 3)):
+            righe = page.locator("table").nth(i).locator("tr")
+            print(f"tabella {i + 1}: {righe.count()} righe")
+            for j in range(min(righe.count(), 4)):
+                print("   ", re.sub(r"\s+", " ", righe.nth(j).inner_text())[:200])
+        if page.locator("tr").count():
+            print("\nHTML della 2a riga:")
+            print(re.sub(r"\s+", " ", page.locator("tr").nth(1).evaluate("e => e.outerHTML"))[:1500])
+
+        print("\n--- Link utili (eventi, gironi, tabelloni) ---")
+        visti = set()
+        for a in page.locator("a").all():
+            try:
+                href = a.get_attribute("href") or ""
+                if re.search(r"tableau|pool|event|tournament|result", href, re.I) and href not in visti:
+                    visti.add(href)
+                    print("  ", href[:150], "|", re.sub(r"\s+", " ", a.inner_text())[:60])
+                    if len(visti) >= 30:
+                        break
+            except Exception:
+                pass
+
+        print(f"\n--- Richieste fatte dalla pagina: {len(risposte)} ---")
+        for m, st, rt, ct, url, corpo, post in risposte[:40]:
+            print(f"{m} {st} {rt} {ct[:40]} {len(corpo)} car. {url[:140]}" + (f" | inviato: {post[:80]}" if post else ""))
+        print("\n--- Contenuto delle richieste dati (json / xhr / fetch) ---")
+        n = 0
+        for m, st, rt, ct, url, corpo, post in risposte:
+            if rt in ("xhr", "fetch") or "json" in ct:
+                n += 1
+                print(f"\n[{n}] {m} {url[:160]}")
+                mostra_corpo(corpo, ct)
+                if n >= 6:
+                    break
+        if n == 0:
+            print("Nessuna richiesta dati: i risultati sono probabilmente scritti direttamente nella pagina.")
+        browser.close()
+
+
+try:
+    main()
+except Exception:
+    traceback.print_exc(limit=4, file=sys.stdout)
+sys.stdout.flush()
+os._exit(0)
