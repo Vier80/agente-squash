@@ -1,0 +1,18 @@
+name: Esplora Canoa
+
+on:
+  workflow_dispatch:
+
+jobs:
+  esplora:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Installa il necessario
+        run: pip install requests
+      - name: Esamina il sito ICF Rankings
+        run: python -u esplora_canoa.py
