@@ -95,10 +95,51 @@ def cerca_nel_codice(html):
             print("    ...", re.sub(r"\s+", " ", html[max(0, i - 100): i + 160]))
 
 
+def accedi_fencing_time_live(ctx):
+    """Accede a Fencing Time Live con le credenziali nei Secrets (mai stampate nel log)."""
+    email = os.getenv("FTL_EMAIL", "").strip()
+    password = os.getenv("FTL_PASSWORD", "")
+    if not email or not password:
+        print("Credenziali Fencing Time Live non trovate nei Secrets: provo senza accedere.")
+        return
+    print("=== 0. Accesso a Fencing Time Live ===")
+    page = ctx.new_page()
+    try:
+        page.goto("https://www.fencingtimelive.com/account/login", wait_until="domcontentloaded", timeout=60000)
+        page.wait_for_timeout(3000)
+        campo_pw = page.locator("input[type=password]").first
+        campo_mail = page.locator("input[type=email], input[name*=mail i], input[id*=mail i]").first
+        if campo_mail.count() == 0:
+            campo_mail = page.locator("input[type=text]").first
+        campo_mail.fill(email)
+        campo_pw.fill(password)
+        pulsante = campo_pw.locator("xpath=ancestor::form").locator("button, input[type=submit]").first
+        if pulsante.count():
+            pulsante.click(timeout=10000)
+        else:
+            campo_pw.press("Enter")
+        page.wait_for_timeout(8000)
+        ancora_login = page.locator("input[type=password]").count() > 0
+        print("Indirizzo dopo l'accesso:", page.url)
+        print("Titolo:", page.title())
+        if ancora_login:
+            testo = re.sub(r"\s+", " ", page.inner_text("body"))
+            print("ATTENZIONE: il modulo di accesso e' ancora visibile, l'accesso sembra non riuscito.")
+            print("Testo della pagina (inizio):", testo[:400])
+        else:
+            print("Accesso riuscito (il modulo di accesso non e' piu' presente).")
+    except Exception as e:
+        print("Accesso non riuscito:", type(e).__name__)
+    finally:
+        page.close()
+
+
 def main():
     with sync_playwright() as p:
         browser = p.chromium.launch()
         ctx = browser.new_context(user_agent=UA, viewport={"width": 1400, "height": 2000})
+        if "fencingtimelive.com" in URL:
+            accedi_fencing_time_live(ctx)
         print("=== A. Lettura semplice, senza browser ===")
         prova_senza_browser(ctx.request, URL, "pagina")
         prova_senza_browser(ctx.request, URL.rstrip("/") + "/data", "pagina + /data")
@@ -223,6 +264,35 @@ def main():
                         mostra_corpo(corpo.decode("utf-8", "replace"), ct)
                 except Exception as e:
                     print(f"[errore] {u}: {e}")
+
+        # D. Classifiche WTA: servizio dati e pulsante "LOAD MORE"
+        if "wtatennis.com/rankings" in URL:
+            print("\n=== D. Classifiche WTA: servizio dati e caricamento di altre righe ===")
+            intest = {"User-Agent": UA, "Referer": "https://www.wtatennis.com/", "Origin": "https://www.wtatennis.com"}
+            prove = [
+                "https://api.wtatennis.com/tennis/players/ranked?page=0&pageSize=100&type=rankSingles&sort=asc&metric=SINGLES",
+                "https://api.wtatennis.com/tennis/players/ranked?page=0&pageSize=100&type=rankDoubles&sort=asc&metric=DOUBLES",
+            ]
+            for u in prove:
+                try:
+                    r = ctx.request.get(u, headers=intest, timeout=30000)
+                    print(f"\n[{r.status}] {u}\n    tipo {r.headers.get('content-type', '?')}, {len(r.body())} byte")
+                    if r.status == 200:
+                        mostra_corpo(r.text(), "")
+                except Exception as e:
+                    print(f"[errore] {u}: {e}")
+            try:
+                print("\nRighe giocatrici nella pagina prima del clic:", page.locator("tr.player-row").count())
+                prima = len(risposte)
+                page.get_by_text(re.compile(r"^\s*LOAD MORE\s*$", re.I)).first.click(timeout=8000)
+                page.wait_for_timeout(7000)
+                print("Righe giocatrici dopo il clic:", page.locator("tr.player-row").count())
+                for m, st, rt, ct, url, corpo, post in risposte[prima:]:
+                    if rt in ("xhr", "fetch") and "privacy" not in url:
+                        print(f"  richiesta dati: {m} {st} {url[:200]}")
+                        mostra_corpo(corpo, ct)
+            except Exception as e:
+                print("Clic su LOAD MORE non riuscito:", type(e).__name__)
         browser.close()
 
 
