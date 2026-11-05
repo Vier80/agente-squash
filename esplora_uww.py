@@ -67,6 +67,24 @@ def on_response(resp):
         pass
 
 
+def riassunto_rankings(corpo):
+    try:
+        gruppi = json.loads(corpo)
+    except Exception as e:
+        print("riassunto classifiche: JSON non leggibile:", e)
+        return
+    print("\n--- Elenco classifiche DataRide (gruppo / classifica) ---")
+    for g in gruppi:
+        print(f"GRUPPO {g.get('GroupId')}: {g.get('GroupName')}")
+        for r in g.get("Rankings", []):
+            ob = r.get("ObjectRankings") or []
+            primo = ob[0] if ob else {}
+            print(f"   id={r.get('Id')} moment={r.get('MomentId')} tipo={r.get('RankingTypeId')} "
+                  f"cat={r.get('CategoryId')} sesso={r.get('GenderId')} stagione={r.get('DisciplineSeasonId')} "
+                  f"| {r.get('RankingName')} | righe nel riepilogo={len(ob)} | 1o: "
+                  f"{primo.get('DisplayName') or primo.get('NationFullName')} {primo.get('Points')}")
+
+
 def prova_senza_browser(ctx, url, etichetta):
     try:
         r = ctx.get(url, headers={"User-Agent": UA}, timeout=30000)
@@ -232,6 +250,14 @@ def main():
         print(f"\n--- Richieste fatte dalla pagina: {len(risposte)} ---")
         for m, st, rt, ct, url, corpo, post in risposte[:40]:
             print(f"{m} {st} {rt} {ct[:40]} {len(corpo)} car. {url[:140]}" + (f" | inviato: {post[:80]}" if post else ""))
+        # Richieste POST ai servizi dati: stampo il testo completo inviato (serve per riprodurle)
+        for m, st, rt, ct, url, corpo, post in risposte:
+            if m == "POST" and post and "dataride" in url:
+                print(f"\n[POST completo] {url}\n    {post[:2500]}")
+        # Elenco compatto delle classifiche, se la risposta e' di tipo DataRide
+        for m, st, rt, ct, url, corpo, post in risposte:
+            if '"Rankings"' in (corpo or "") and '"GroupName"' in corpo:
+                riassunto_rankings(corpo)
         print("\n--- Contenuto delle richieste dati (json / xhr / fetch) ---")
         n = 0
         for m, st, rt, ct, url, corpo, post in risposte:
@@ -239,7 +265,7 @@ def main():
                 n += 1
                 print(f"\n[{n}] {m} {url[:160]}")
                 mostra_corpo(corpo, ct)
-                if n >= 6:
+                if n >= 12:
                     break
         if n == 0:
             print("Nessuna richiesta dati: i risultati sono probabilmente scritti direttamente nella pagina.")
