@@ -88,6 +88,23 @@ def cerca_nel_codice(html):
     if m:
         print("dati incorporati (__NUXT_DATA__):", len(m.group(1)), "caratteri; inizio:",
               re.sub(r"\s+", " ", m.group(1)[:600]))
+    # Elenchi a tendina (select/option): utili per capire quali classifiche esistono
+    for sel in re.finditer(r"<select\b([^>]*)>(.*?)</select>", html, re.S | re.I):
+        attrs = re.sub(r"\s+", " ", sel.group(1))[:160]
+        opts = re.findall(r"<option\b([^>]*)>(.*?)</option>", sel.group(2), re.S | re.I)
+        print(f"\n[select] {attrs} | {len(opts)} voci")
+        for a, t in opts[:40]:
+            v = re.search(r'value="([^"]*)"', a)
+            print("    ", (v.group(1) if v else "?"), "|", re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", t)).strip()[:80])
+    # Indirizzi dei servizi dati (Get...) citati nella pagina
+    servizi = sorted(set(re.findall(r"[\w/.:-]*[Gg]et[A-Z]\w+/?", html)))
+    if servizi:
+        print("\nServizi 'Get...' citati nel codice:", servizi[:40])
+    for parola in ("olymp", "qualif", "nations", "teams"):
+        pos = [x.start() for x in re.finditer(parola, html, re.I)]
+        print(f"'{parola}': {len(pos)} volte")
+        for i in pos[:6]:
+            print("    ...", re.sub(r"\s+", " ", html[max(0, i - 120): i + 200]))
     for parola in ("tableau", "bracket", "table of", "pool", "bout", "winner", "score", "api/competition", "api/"):
         pos = [x.start() for x in re.finditer(re.escape(parola), html, re.I)]
         print(f"'{parola}': {len(pos)} volte")
