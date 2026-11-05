@@ -71,12 +71,28 @@ def prova_senza_browser(ctx, url, etichetta):
     try:
         r = ctx.get(url, headers={"User-Agent": UA}, timeout=30000)
         corpo = r.text()
+        if etichetta == "pagina":
+            cerca_nel_codice(corpo)
         print(f"[{etichetta}] {url[:140]}")
         print(f"    stato {r.status}, tipo {r.headers.get('content-type', '?')}, {len(corpo)} caratteri, "
               f"<tr>: {corpo.count('<tr')}, <table>: {corpo.count('<table')}")
         mostra_corpo(corpo, r.headers.get("content-type", ""))
     except Exception as e:
         print(f"[{etichetta}] errore: {e}")
+
+
+def cerca_nel_codice(html):
+    print("\n--- Ricerca di parole chiave nel codice grezzo della pagina ---")
+    print("dimensione:", len(html), "caratteri")
+    m = re.search(r'<script[^>]*id="__NUXT_DATA__"[^>]*>(.*?)</script>', html, re.S)
+    if m:
+        print("dati incorporati (__NUXT_DATA__):", len(m.group(1)), "caratteri; inizio:",
+              re.sub(r"\s+", " ", m.group(1)[:600]))
+    for parola in ("tableau", "bracket", "table of", "pool", "bout", "winner", "score", "api/competition", "api/"):
+        pos = [x.start() for x in re.finditer(re.escape(parola), html, re.I)]
+        print(f"'{parola}': {len(pos)} volte")
+        for i in pos[:2]:
+            print("    ...", re.sub(r"\s+", " ", html[max(0, i - 100): i + 160]))
 
 
 def main():
@@ -124,6 +140,36 @@ def main():
                         break
             except Exception:
                 pass
+
+
+        print("\n--- Schede e pulsanti nella pagina ---")
+        voci = []
+        for sel in ("[role=tab]", "button", "a"):
+            for el in page.locator(sel).all():
+                try:
+                    t = re.sub(r"\s+", " ", el.inner_text()).strip()
+                    if t and len(t) < 40 and t not in voci:
+                        voci.append(t)
+                except Exception:
+                    pass
+        print(voci[:60])
+        for nome in ("Table", "Tableau", "Elimination", "Bracket", "Pools", "Poules", "Bouts"):
+            try:
+                loc = page.get_by_text(re.compile(rf"^\s*{nome}", re.I)).first
+                if loc.count() == 0:
+                    continue
+                prima = len(risposte)
+                loc.click(timeout=5000)
+                page.wait_for_timeout(6000)
+                print(f"\n=== Dopo il clic su '{nome}' === indirizzo: {page.url}")
+                print(re.sub(r"[ \t]+", " ", page.inner_text("body"))[:2500])
+                for m, st, rt, ct, url, corpo, post in risposte[prima:]:
+                    if rt in ("xhr", "fetch") or "json" in ct:
+                        print(f"  richiesta dati: {m} {st} {url[:160]}")
+                        mostra_corpo(corpo, ct)
+                break
+            except Exception as e:
+                print(f"clic su {nome} non riuscito: {e}")
 
         print(f"\n--- Richieste fatte dalla pagina: {len(risposte)} ---")
         for m, st, rt, ct, url, corpo, post in risposte[:40]:
