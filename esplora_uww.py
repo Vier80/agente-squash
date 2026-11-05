@@ -174,7 +174,7 @@ def main():
         for a in page.locator("a").all():
             try:
                 href = a.get_attribute("href") or ""
-                if re.search(r"tableau|pool|event|tournament|result", href, re.I) and href not in visti:
+                if re.search(r"tableau|pool|event|tournament|result|rank|double", href, re.I) and href not in visti:
                     visti.add(href)
                     print("  ", href[:150], "|", re.sub(r"\s+", " ", a.inner_text())[:60])
                     if len(visti) >= 30:
