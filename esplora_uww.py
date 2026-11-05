@@ -185,6 +185,44 @@ def main():
                     break
         if n == 0:
             print("Nessuna richiesta dati: i risultati sono probabilmente scritti direttamente nella pagina.")
+
+        # C. Indirizzi alternativi (vecchio formato del sito FIE, con i risultati in PDF)
+        mm = re.search(r"/tournaments/(\d{4})/(\d+)/event/(\d+)", URL)
+        if mm:
+            anno, torneo, gara = mm.groups()
+            print(f"\n=== C. Indirizzi alternativi per la gara {gara} (anno {anno}) ===")
+            base = "https://fie.org"
+            candidati = [f"{base}/competition/{anno}/{gara}"]
+            for tipo in ("ranking", "poolsResults", "tableau", "tableauResults", "tableaux",
+                         "directElimination", "bouts", "results"):
+                candidati.append(f"{base}/competition/{anno}/{gara}/results/{tipo}/pdf?lang=en")
+            candidati += [f"{base}/tournaments/{anno}/{torneo}/event/{gara}",
+                          f"{base}/tournaments/{anno}/{torneo}/event/{gara}/pools",
+                          f"{base}/tournaments/{anno}/{torneo}/event/{gara}/tableau",
+                          f"{base}/api/competition/events/{gara}",
+                          f"{base}/api/competition/tournaments/{torneo}"]
+            import subprocess
+            import tempfile
+            for u in candidati:
+                try:
+                    r = ctx.request.get(u, headers={"User-Agent": UA}, timeout=30000)
+                    corpo = r.body()
+                    ct = r.headers.get("content-type", "?")
+                    print(f"\n[{r.status}] {u}\n    tipo {ct}, {len(corpo)} byte")
+                    if corpo[:4] == b"%PDF":
+                        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f:
+                            f.write(corpo)
+                        try:
+                            out = subprocess.run(["pdftotext", "-layout", f.name, "-"],
+                                                 capture_output=True, text=True, timeout=60).stdout
+                            print("    PDF, testo estratto (primi 1800 caratteri):")
+                            print(out[:1800])
+                        except Exception as e:
+                            print("    PDF scaricato, ma non riesco a leggerlo:", e)
+                    elif r.status == 200:
+                        mostra_corpo(corpo.decode("utf-8", "replace"), ct)
+                except Exception as e:
+                    print(f"[errore] {u}: {e}")
         browser.close()
 
 
