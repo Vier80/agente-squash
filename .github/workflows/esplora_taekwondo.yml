@@ -1,0 +1,27 @@
+name: Esplora Taekwondo
+
+on:
+  workflow_dispatch:
+
+jobs:
+  esplora:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Installa il necessario
+        run: |
+          pip install requests playwright
+          playwright install --with-deps chromium
+      - name: Esamina il sito World Taekwondo
+        run: python -u esplora_taekwondo.py
+      - name: Conserva lo screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tkd-screenshot
+          path: tkd_ranking.png
+          if-no-files-found: ignore
