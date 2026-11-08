@@ -1,4 +1,4 @@
 # Un indirizzo di torneo per riga. Le righe che iniziano con # vengono ignorate.
-https://www.psasquashtour.com/tournament/u-s-open-2026/
+# https://www.psasquashtour.com/tournament/u-s-open-2026/
 https://www.psasquashtour.com/tournament/hong-kong-squash-open-2026/
 https://www.psasquashtour.com/tournament/sprott-tournament-of-champions-2027-presented-by-crowd-street/
