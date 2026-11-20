@@ -1,5 +1,9 @@
-# Un indirizzo di torneo per riga. Le righe che iniziano con # vengono ignorate.
-# https://www.psasquashtour.com/tournament/u-s-open-2026/
+# Tornei PSA da leggere IN PIÙ rispetto a quelli automatici (versione 2.0 dell'agente).
+#
+# In automatico l'agente legge già, dal 1° gennaio 2026: Mondiali, Tour Finals, Diamond, Platinum e Gold.
+# Qui scrivi solo gli altri tornei che ti interessano (es. Silver, Bronze, Giochi continentali sul sito PSA):
+# un indirizzo per riga, copiato dal sito, del tipo https://www.psasquashtour.com/tournament/nome-del-torneo/
+# Le righe che iniziano con # vengono ignorate. Un torneo scritto qui e già automatico non viene letto due volte.
+
+https://www.psasquashtour.com/tournament/u-s-open-2026/
 https://www.psasquashtour.com/tournament/china-squash-open-2026/
-https://www.psasquashtour.com/tournament/hong-kong-squash-open-2026/
-https://www.psasquashtour.com/tournament/sprott-tournament-of-champions-2027-presented-by-crowd-street/
