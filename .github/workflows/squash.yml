@@ -1,24 +1,57 @@
 name: Agente Squash
 
+# Workflow dell'agente dei risultati squash (versione 2.0 del 20/11/2026, scheda 45).
+# File: .github/workflows/squash.yml del repository dell'agente squash (sostituisce il contenuto del file
+# che c'è già, con lo STESSO nome: cron-job.org avvia il workflow proprio con il nome del file).
+# Se nel repository il file si chiama squash.yaml (con la «a»), tieni quel nome.
+#
+# Parte in due modi:
+#   - ogni mattina da cron-job.org: valgono i valori predefiniti, cioè lancio vero (prova = no);
+#   - a mano: Actions -> Agente Squash -> Run workflow (con la spunta «Solo prova» per provare).
+# Novità della 2.0: lo script riceve MAPPA_TOKEN e pubblica squash-risultati.json nel repo map-q-la28.
 on:
   workflow_dispatch:
     inputs:
-      solo_prova:
-        description: "Solo prova (non scrive su Notion)"
+      prova:
+        description: "Solo prova (legge il sito PSA e Notion, ma non scrive nulla)"
         type: boolean
-        default: true
+        default: false
+      data_inizio:
+        description: "Primo giorno dei tornei letti in automatico (AAAA-MM-GG)"
+        type: string
+        default: "2026-01-01"
+
+concurrency:
+  group: agente-squash       # mai due esecuzioni insieme: il secondo lancio aspetta il primo
+  cancel-in-progress: false
 
 jobs:
   aggiorna:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -r requirements.txt
-      - run: python scrape.py
+      - run: pip install requests
+      - name: Leggi i tabelloni PSA, scrivi su Notion e pubblica la pagina
+        # "shell: bash" fa sì che un errore dello script colori di rosso il lancio anche con "tee"
+        shell: bash
         env:
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
-          DRY_RUN: ${{ github.event.inputs.solo_prova }}
+          MAPPA_TOKEN: ${{ secrets.MAPPA_TOKEN }}
+          DRY_RUN: ${{ inputs.prova }}
+          DATA_INIZIO: ${{ inputs.data_inizio }}
+        # "tee" scrive il registro a video e, insieme, nel file rapporto_squash.txt
+        run: python -u scrape.py | tee rapporto_squash.txt
+      - name: Conserva il rapporto e il file della pagina (Artifacts in fondo alla pagina del lancio)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rapporto-squash
+          path: |
+            rapporto_squash.txt
+            squash-risultati.json
+          if-no-files-found: ignore
